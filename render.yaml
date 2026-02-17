@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: memofarm-api
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: API_PREFIX
+        value: /api
+      - key: MONGODB_URI
+        sync: false  # Must be set manually in dashboard
+      - key: DB_NAME
+        value: memofarm
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "*"  # Update with your domains

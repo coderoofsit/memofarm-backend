@@ -1,0 +1,120 @@
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃            MEMOFARM BACKEND - RENDER DEPLOYMENT                 ┃
+┃                      QUICK REFERENCE                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+📦 RENDER CONFIGURATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Name:           memofarm-api
+Runtime:        Python 3
+Build Command:  pip install -r requirements.txt
+Start Command:  gunicorn run:app
+Root Directory: backend (if backend is subfolder)
+Instance Type:  Free or Starter ($7/mo)
+
+🔐 ENVIRONMENT VARIABLES (Required)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/memofarm?retryWrites=true&w=majority
+DB_NAME=memofarm
+SECRET_KEY=[generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"]
+ADMIN_API_KEY=[generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"]
+FLASK_ENV=production
+API_PREFIX=/api
+CORS_ORIGINS=https://your-app.com,https://admin.your-app.com
+
+Optional:
+FIREBASE_PROJECT_ID=your-firebase-project-id
+
+📡 AFTER DEPLOYMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your API URL: https://[your-app].onrender.com
+
+Test Health:
+  curl https://[your-app].onrender.com/health
+
+Test Italian Medicines:
+  curl https://[your-app].onrender.com/api/italian-medicines/stats
+
+Test Admin (replace [key]):
+  curl -H "X-Admin-Key: [key]" https://[your-app].onrender.com/api/admin/stats
+
+🔧 UPDATE YOUR APPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Flutter App:
+  lib/core/constants/api_constants.dart
+  baseUrl = 'https://[your-app].onrender.com/api'
+
+Admin Panel:
+  src/services/adminApi.js
+  API_BASE = 'https://[your-app].onrender.com/api/admin'
+  ADMIN_API_KEY = '[your-generated-key]'
+
+📊 API ENDPOINTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Public:
+  GET  /health
+  GET  /api/italian-medicines/search
+  GET  /api/italian-medicines/stats
+
+User (requires Firebase token):
+  POST /api/auth/login
+  GET  /api/medicines
+  POST /api/medicines
+  GET  /api/medicines/expiring
+
+Admin (requires X-Admin-Key header):
+  GET  /api/admin/stats
+  GET  /api/admin/users
+  GET  /api/admin/italian-medicines
+  POST /api/admin/italian-medicines
+  PUT  /api/admin/italian-medicines/{id}
+  DELETE /api/admin/italian-medicines/{id}
+
+📚 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DEPLOYMENT_CHECKLIST.md  - Step-by-step deployment guide
+RENDER_DEPLOYMENT.md      - Detailed Render instructions
+ADMIN_API_REFERENCE.md    - Admin API documentation (in root)
+
+⚠️  IMPORTANT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Generate strong SECRET_KEY and ADMIN_API_KEY
+2. Update CORS_ORIGINS with your domains (not *)
+3. MongoDB Atlas must allow Render connections (0.0.0.0/0)
+4. Free tier: cold starts after 15min inactivity (30-60s)
+
+💾 DATABASE INFO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Collections:
+  - users              (User accounts)
+  - medicines          (User medicines)
+  - italian_medicines  (158,078 AIFA records)
+
+🚀 DEPLOYMENT COMMAND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+git add .
+git commit -m "Deploy to Render"
+git push origin main
+
+Then: Render auto-deploys on push (if connected)
+Or: Manual deploy in Render dashboard
+
+✅ SUCCESS CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+□ Build completed successfully
+□ Service shows "Live" status
+□ /health returns 200 OK
+□ /api/italian-medicines/stats returns count
+□ Admin API key works
+□ Flutter app connects
+□ Admin panel connects
+
+📞 SUPPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Render Docs:   https://render.com/docs/web-services
+MongoDB Atlas: https://docs.atlas.mongodb.com/
+Flask on Render: https://render.com/docs/deploy-flask
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          Happy Deploying! 🚀 Last Updated: Feb 17, 2026
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
