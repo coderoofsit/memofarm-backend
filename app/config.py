@@ -8,7 +8,7 @@ class Config:
     """Base configuration"""
 
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
-    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/memofarm")
+    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://coderoofitsolutions:9yg700rXeFfcS6op@eventdating.phubh6n.mongodb.net/memofarm")
     DB_NAME = os.getenv("DB_NAME", "memofarm")
 
     # Google OAuth

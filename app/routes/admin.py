@@ -1,5 +1,7 @@
 from flask import Blueprint, request
 from datetime import datetime
+import csv
+import io
 from app.models.user import User
 from app.models.medicine import Medicine
 from app.models.italian_medicine import ItalianMedicine
@@ -580,3 +582,187 @@ def bulk_delete_italian_medicines():
     
     except Exception as e:
         return create_response(message=f"Error: {str(e)}", status=500)
+
+
+KNOWN_HEADERS = {
+    "codice_aic": ["codice_aic", "aic", "aic_code", "codice aic", "aic code"],
+    "cod_farmaco": ["cod_farmaco", "codice farmaco", "drug code", "cod farmaco"],
+    "cod_confezione": ["cod_confezione", "codice confezione", "package code", "cod confezione"],
+    "denominazione": ["denominazione", "nome", "name", "medicine name", "medicine_name", "denominazione del medicinale"],
+    "descrizione": ["descrizione", "description", "desc"],
+    "codice_ditta": ["codice_ditta", "codice ditta", "company code"],
+    "ragione_sociale": ["ragione_sociale", "ragione sociale", "manufacturer", "produttore", "ditta"],
+    "stato_amministrativo": ["stato_amministrativo", "stato amministrativo", "stato", "status"],
+    "tipo_procedura": ["tipo_procedura", "tipo procedura", "procedure", "procedura"],
+    "forma": ["forma", "forma farmaceutica", "form", "dosage form"],
+    "codice_atc": ["codice_atc", "codice atc", "atc", "atc_code", "atc code"],
+    "pa_associati": ["pa_associati", "pa associati", "principio attivo", "active ingredient", "active_ingredient", "ingrediente"],
+    "link": ["link", "url"],
+}
+
+
+def map_headers(raw_headers):
+    """Map uploaded file headers to known field names."""
+    mapping = {}
+    for raw in raw_headers:
+        normalized = raw.strip().lower().replace("_", " ").replace("-", " ")
+        for field, aliases in KNOWN_HEADERS.items():
+            if normalized in aliases or normalized.replace(" ", "_") == field:
+                mapping[raw] = field
+                break
+    return mapping
+
+
+def parse_csv_file(file_stream):
+    """Parse CSV from a file stream, return list of dicts."""
+    text = file_stream.read().decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text), delimiter=None)
+    if reader.fieldnames is None:
+        return [], {}
+    
+    sep = ","
+    first_field = reader.fieldnames[0] if reader.fieldnames else ""
+    if ";" in first_field:
+        text_io = io.StringIO(text)
+        reader = csv.DictReader(text_io, delimiter=";")
+    elif "\t" in first_field:
+        text_io = io.StringIO(text)
+        reader = csv.DictReader(text_io, delimiter="\t")
+    
+    header_map = map_headers(reader.fieldnames or [])
+    rows = []
+    for row in reader:
+        mapped = {}
+        for raw_col, field_name in header_map.items():
+            val = row.get(raw_col, "").strip()
+            if val:
+                mapped[field_name] = val
+        if mapped:
+            rows.append(mapped)
+    return rows, header_map
+
+
+def parse_excel_file(file_stream):
+    """Parse Excel .xlsx from a file stream, return list of dicts."""
+    from openpyxl import load_workbook
+    
+    wb = load_workbook(file_stream, read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    
+    raw_headers = []
+    for first_row in rows_iter:
+        raw_headers = [str(cell or "").strip() for cell in first_row]
+        break
+    
+    if not raw_headers:
+        return [], {}
+    
+    header_map = map_headers(raw_headers)
+    rows = []
+    for row in rows_iter:
+        mapped = {}
+        for i, cell in enumerate(row):
+            if i < len(raw_headers):
+                raw_col = raw_headers[i]
+                if raw_col in header_map:
+                    val = str(cell or "").strip()
+                    if val:
+                        mapped[header_map[raw_col]] = val
+        if mapped:
+            rows.append(mapped)
+    
+    wb.close()
+    return rows, header_map
+
+
+@admin_bp.route("/italian-medicines/bulk-upload", methods=["POST"])
+@admin_required
+def bulk_upload_italian_medicines():
+    """
+    Bulk upload Italian medicines from CSV or Excel file.
+    POST /api/admin/italian-medicines/bulk-upload
+    Content-Type: multipart/form-data
+    Body: file (CSV or XLSX), skip_duplicates (optional, default true)
+    """
+    try:
+        if "file" not in request.files:
+            return create_response(message="No file provided", status=400)
+        
+        file = request.files["file"]
+        if not file.filename:
+            return create_response(message="No file selected", status=400)
+        
+        filename = file.filename.lower()
+        skip_duplicates = request.form.get("skip_duplicates", "true").lower() == "true"
+        
+        if filename.endswith(".csv"):
+            rows, header_map = parse_csv_file(file.stream)
+        elif filename.endswith((".xlsx", ".xls")):
+            rows, header_map = parse_excel_file(file.stream)
+        else:
+            return create_response(
+                message="Unsupported file format. Use CSV or XLSX.",
+                status=400
+            )
+        
+        if not rows:
+            return create_response(message="No valid data rows found in file", status=400)
+        
+        if not header_map:
+            return create_response(
+                message="Could not map any file headers to known fields. "
+                        "Expected headers like: codice_aic, denominazione, ragione_sociale, forma, etc.",
+                status=400
+            )
+        
+        mapped_fields = list(header_map.values())
+        
+        inserted = 0
+        skipped = 0
+        errors = []
+        batch = []
+        
+        for i, row in enumerate(rows):
+            line_num = i + 2  # +2 for header row + 0-index
+            
+            if not row.get("codice_aic"):
+                errors.append(f"Row {line_num}: missing codice_aic")
+                continue
+            if not row.get("denominazione"):
+                errors.append(f"Row {line_num}: missing denominazione")
+                continue
+            
+            if skip_duplicates:
+                existing = ItalianMedicine.find_by_aic(row["codice_aic"])
+                if existing:
+                    skipped += 1
+                    continue
+            
+            row["created_at"] = datetime.utcnow()
+            batch.append(row)
+            
+            if len(batch) >= 500:
+                count = ItalianMedicine.bulk_create(batch)
+                inserted += count
+                batch = []
+        
+        if batch:
+            count = ItalianMedicine.bulk_create(batch)
+            inserted += count
+        
+        return create_response(
+            data={
+                "inserted": inserted,
+                "skipped": skipped,
+                "errors_count": len(errors),
+                "errors": errors[:20],
+                "total_rows": len(rows),
+                "mapped_fields": mapped_fields,
+            },
+            message=f"Uploaded {inserted} medicines ({skipped} duplicates skipped, {len(errors)} errors)",
+            status=200
+        )
+    
+    except Exception as e:
+        return create_response(message=f"Upload failed: {str(e)}", status=500)
